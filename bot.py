@@ -1,6 +1,7 @@
 import os
 import asyncio
-from aiogram import Bot, Dispatcher, types
+import logging
+from aiogram import Bot, Dispatcher
 from aiogram.types import Message
 from aiogram.filters import CommandStart
 
@@ -64,4 +65,5 @@ async def main():
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
+
     asyncio.run(main())
