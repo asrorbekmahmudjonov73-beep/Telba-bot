@@ -1,24 +1,24 @@
 import os
 import asyncio
 import logging
-from aiogram import Bot, Dispatcher, F
-from aiogram.types import Message
+from aiogram import Bot, Dispatcher
+from aiogram.types import Message, InlineQuery, InlineQueryResultVoice
 from aiogram.filters import CommandStart
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+from aiohttp import web
 
 TOKEN = os.getenv("TOKEN")
+BASE_URL = os.getenv("RENDER_EXTERNAL_HOSTNAME")   # Render automatically sets this (or use full https://your-app.onrender.com)
+WEBHOOK_PATH = f"/bot/{TOKEN}"
+WEBHOOK_URL = f"https://{BASE_URL}{WEBHOOK_PATH}"
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# 2️⃣ Loglarni sozlash
 logging.basicConfig(level=logging.INFO)
 
-# 3️⃣ Inline query handler
-@dp.inline_query()
-async def inline_handler(query: InlineQuery):
-    search_text = query.query.lower()
-
-    all_voices = [
+# Your voices list (unchanged)
+all_voices = [
         {"id": "1", "title": "Haydelar", "file_id": "AwACAgQAAxkBAAMraZIyb_9L6kLbApOLoSmypRV7XD4AAgwcAALVgVFQ-5vxHXZ_I5Y6BA"},
         {"id": "2", "title": "Meni chaqirib, o'zlaring yoqsanlar", "file_id": "AwACAgQAAxkBAAMtaZIy6KTFhtUa4Yh8TiooV8ceI1wAAj8fAAL0VGBQ25_d8sbzMlc6BA"},
         {"id": "3", "title": "bir narsa qimimizmi, tashkillashtirmimzmi ?", "file_id": "AwACAgQAAxkBAAMvaZIzFDUB4xjcQNd2JZhBi5N83WYAAkEfAAL0VGBQU2kF05FKze46BA"},
@@ -37,33 +37,70 @@ async def inline_handler(query: InlineQuery):
         {"id": "16", "title": "Trend Aliksandor biladi u", "file_id": "AwACAgQAAxkBAANJaZIzeLRXko7Uz3vYm48hm10I_0IAArUdAAIx9pFQZtJ0OcowF4Q6BA"},
         {"id": "17", "title": "Arda guler...", "file_id": "AwACAgQAAxkBAANNaZIzhXFLJrJvL3YfkgKz_4VtZZAAArgdAAIx9pFQPLsHuBFhSPs6BA"},
         {"id": "18", "title": "Turinglar ee soat 8:30 bolyapti", "file_id": "AwACAgQAAxkBAANPaZIzoA5GRjLOqY3oL6DY3U9ESzEAArkdAAIx9pFQT1Z_OqjVU1A6BA"},
-        {"id": "19", "title": "Assalomu allaykum Juma ayyom", "file_id": "AwACAgQAAxkBAANVaZIztrfYV7XQ6hbeH3lkInuYn_sAArwdAAIx9pFQK4VMQxvgEAo6BA"}
-    ]
+        {"id": "19", "title": "Assalomu allaykum Juma ayyom", "file_id": "AwACAgQAAxkBAANVaZIztrfYV7XQ6hbeH3lkInuYn_sAArwdAAIx9pFQK4VMQxvgEAo6BA"},
+]
 
+@dp.inline_query()
+async def inline_handler(query: InlineQuery):
+    search_text = query.query.lower()
     results = []
     for voice in all_voices:
         if search_text in voice["title"].lower():
             results.append(
                 InlineQueryResultVoice(
                     id=voice["id"],
-                    voice_url=voice["file_id"],
+                    voice_url=voice["file_id"],   # Telegram file_id works here as voice_url
                     title=voice["title"]
                 )
             )
-
     await query.answer(results=results[:50], cache_time=1)
 
-# 4️⃣ Voice ID olish handleri
-@dp.message(F.voice)
-async def get_id(message: types.Message):
+@dp.message(lambda message: message.voice is not None)
+async def get_id(message: Message):
     await message.answer(f"Voice ID:\n{message.voice.file_id}")
 
-# 5️⃣ Asosiy ishga tushirish
-async def main():
+async def on_startup():
     print("Bot ishga tushdi...")
     await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot)
+    await bot.set_webhook(WEBHOOK_URL)
+    print(f"Webhook o'rnatildi: {WEBHOOK_URL}")
+
+async def on_shutdown():
+    await bot.delete_webhook()
+    await bot.session.close()
+
+def main():
+    app = web.Application()
+
+    # Webhook handler
+    webhook_handler = SimpleRequestHandler(
+        dispatcher=dp,
+        bot=bot,
+    )
+    webhook_handler.register(app, path=WEBHOOK_PATH)
+
+    # Optional: root or /health endpoint so Render sees something
+    async def health(request):
+        return web.Response(text="OK")
+
+    app.router.add_get("/", health)
+    app.router.add_get("/health", health)
+
+    # aiogram recommended setup
+    setup_application(app, dp, bot=bot)
+
+    # Run aiohttp server
+    port = int(os.getenv("PORT", 10000))   # Render gives you PORT env var
+    web.run_app(
+        app,
+        host="0.0.0.0",
+        port=port,
+    )
 
 if __name__ == "__main__":
-
-    asyncio.run(main())
+    # In development you can run polling, but on Render → webhook
+    if os.getenv("RENDER") == "1":  # optional flag if you want to detect Render
+        main()
+    else:
+        # For local testing — polling
+        asyncio.run(dp.start_polling(bot))
