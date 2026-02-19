@@ -62,7 +62,7 @@ async def get_voice_id(message: Message):
 
 async def on_startup(bot: Bot):
     await bot.delete_webhook(drop_pending_updates=True)
-    await bot.set_webhook(WEBHOOK_URL)
+    await bot.set_webhook/webhook/https://api.telegram.org/bot7988887798:AAFiueH2VGGtkpdHn-r1OWuHckYL83PvwyU/deleteWebhook?drop_pending_updates=true
     print(f"Webhook o'rnatildi: {WEBHOOK_URL}")
 
 async def on_shutdown(bot: Bot):
@@ -94,3 +94,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
